@@ -11,7 +11,8 @@ lazy val core = project.in(file("core"))
       // concurrency abstractions and primitives (Concurrent, Sync, Async etc.)
       "org.typelevel" %% "cats-effect-kernel" % "3.3.12",
       // standard "effect" library (Queues, Console, Random etc.)
-      "org.typelevel" %% "cats-effect-std" % "3.3.12"
+      "org.typelevel" %% "cats-effect-std" % "3.3.12",
+      "org.scalameta" %% "munit" % "0.7.29" % Test
     ),
     scalacOptions ++= Seq(
       "-no-indent"
