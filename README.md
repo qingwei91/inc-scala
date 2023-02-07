@@ -1,15 +1,9 @@
-# incremental-scala
+# Incremental computing library in Scala
 
-An example application built from the [ce3.g8 template](https://github.com/typelevel/ce3.g8).
+The idea is largely copied from https://github.com/janestreet/incremental.
 
-## Run application
+This library allow user to model incremental computation using a Monadic data type called `Inc`.
 
-```shell
-sbt run
-```
-
-## Run tests
-
-```shell
-sbt test
-```
+## References:
+* https://github.com/janestreet/incremental
+* https://lord.io/spreadsheets/

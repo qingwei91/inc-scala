@@ -60,28 +60,30 @@ class StateGraph(
     }
   }
 
-  def addInc[A](ic: Inc[A], startingHeight: Int = 0): InternalNode = {
+  def addInc[A](ic: Inc[A], forceRecompute: Boolean = false, startingHeight: Int = 0): InternalNode = {
     if (icToNode.contains(ic)) {
       return icToNode(ic)
     }
 
     val internalNode: InternalNode = ic match {
-      case ic: InputInc[A] => INode(ic.init)
+      case ic: InputInc[A] => INode(ic.init, forceRecompute, height = startingHeight)
       case MapInc(i, f) =>
-        val dep = addInc(i, startingHeight)
-        MNode(null, eval = f.asInstanceOf, dep)
+        val dep = addInc(i, forceRecompute, startingHeight)
+        MNode(null, eval = f.asInstanceOf[Any => Any], dep)
       case Map2Inc(i1, i2, f) =>
-        val node1 = addInc(i1, startingHeight)
+        val node1 = addInc(i1, forceRecompute, startingHeight)
 
-        val node2 = addInc(i2, startingHeight)
+        val node2 = addInc(i2, forceRecompute, startingHeight)
         M2Node(null, f.asInstanceOf, (node1, node2))
       case FMapInc(i, f) =>
         // a flatmap node is really a collection of nodes, with a start and an end, then the middle is created dynamically
-        val depNode = addInc(i)
-        val inner   = RedirectNode(null, depNode, depNode.height + 2)
-        increaseToHeight(depNode.height + 2)
-        nodesInHeight(depNode.height + 2).addOne(inner)
-        FMNode(f.asInstanceOf, depNode, inner)
+        // we use the RedirectNode to represent
+        val depNode   = addInc(i)
+        val innerNode = RedirectNode(null, depNode, depNode.height + 2)
+        val fmNode    = FMNode(f.asInstanceOf, depNode, innerNode)
+        increaseToHeight(depNode.height + 1)
+        nodesInHeight(depNode.height + 1).addOne(fmNode)
+        innerNode
     }
 
     icToNode.addOne(ic -> internalNode)
@@ -98,10 +100,10 @@ class StateGraph(
   }
 
   private def relocateInnerNode(innerNode: RedirectNode, desiredHeight: Int) = {
-    if (desiredHeight < innerNode.currentHeight) {
-      nodesInHeight(innerNode.currentHeight).filterInPlace(_ ne innerNode)
+    if (desiredHeight > innerNode.height) {
+      nodesInHeight(innerNode.height).filterInPlace(_ ne innerNode)
       nodesInHeight(desiredHeight).append(innerNode)
-      innerNode.currentHeight = desiredHeight
+      innerNode.height = desiredHeight
     }
   }
 
@@ -117,6 +119,8 @@ class StateGraph(
         val correctHeight = math.max(currentHeight, node.height)
         if (currentHeight != correctHeight) {
           nodes.filterInPlace(_ != node)
+          // this work because we know ith node is removed, so the next node is still i, thus we retract
+          i -= 1
           increaseToHeight(correctHeight)
           nodesInHeight(correctHeight).append(node)
         } else {
@@ -137,7 +141,7 @@ class StateGraph(
             case node @ FMNode(eval, dep, innerNode) =>
               if (changedNodes.containsKey(dep)) {
                 val newInnerTree = eval(dep.data)
-                val outputNode   = addInc(newInnerTree, node.height + 1)
+                val outputNode   = addInc(newInnerTree, true, node.height + 1)
 
                 innerNode.dep = outputNode
                 val innerNodeNewHeight = outputNode.height + 1

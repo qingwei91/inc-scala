@@ -12,7 +12,7 @@ class IncTest extends munit.FunSuite {
 
   test("InputInc identity hash") {
     val mapp = mutable.HashMap.empty[Inc[_], Int]
-    val a = Inc.init(2.0)
+    val a    = Inc.init(2.0)
     mapp.addOne(a, 1)
 
     assertEquals(mapp(a), 1)
@@ -45,5 +45,33 @@ class IncTest extends munit.FunSuite {
 
     assertEquals(plusHandle.read, expectedPlus)
     assertEquals(minusHandle.read, expectedMinus)
+  }
+
+  test("Dynamic node") {
+    val input = Inc.init(202)
+    val expr: Inc[Double] = input.toInc
+      .flatMap { a =>
+        val o: Inc[Double] = if (a % 2 == 0) {
+          Inc.init(10).toInc.map(k => a * k / 102)
+        } else {
+          Inc.init(2022).toInc.map(k => (a - k) / 102).map(q => q * 3.2)
+        }
+        o
+      }
+      .map[Double](r => r * r * 0.8)
+
+    val graph = StateGraph.init
+    graph.addInc(expr)
+    val handle = graph.observe(expr)
+
+    graph.update(input, 111)
+    graph.compute()
+
+    assertEquals(handle.read, 2654.2080000000005)
+
+    graph.update(input, 222)
+    graph.compute()
+
+    assertEquals(handle.read, 352.8)
   }
 }
