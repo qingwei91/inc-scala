@@ -7,7 +7,11 @@ import scala.collection.mutable
 import scala.language.implicitConversions
 import scala.util.hashing.*
 
-sealed trait Inc[+A]
+sealed trait Inc[+A] {
+  def map[B](f: A => B): Inc[B]                      = MapInc(this, f)
+  def flatMap[B](f: A => Inc[B]): Inc[B]             = FMapInc(this, f)
+  def map2[B, C](ib: Inc[B], f: (A, B) => C): Inc[C] = Map2Inc(this, ib, f)
+}
 class InputInc[A](val init: A) extends Inc[A]
 
 extension [A](i: InputInc[A]) {
@@ -20,21 +24,14 @@ case class FMapInc[A, B](i: Inc[A], f: A => Inc[B])                 extends Inc[
 
 object Inc {
   def init[A](a: A): InputInc[A] = new InputInc[A](a)
-
-  implicit val fm: FlatMap[Inc] = new FlatMap[Inc] {
-    override def map[A, B](fa: Inc[A])(f: A => B): Inc[B] = {
-      MapInc(fa, f)
-    }
-
-    override def flatMap[A, B](fa: Inc[A])(f: A => Inc[B]): Inc[B] = FMapInc(fa, f)
-
-    override def map2[A, B, Z](fa: Inc[A], fb: Inc[B])(f: (A, B) => Z): Inc[Z] = Map2Inc(fa, fb, f)
-
-    override def tailRecM[A, B](a: A)(f: A => Inc[Either[A, B]]): Inc[B] = {
-      ???
-    }
-  }
 }
+
+/** How to avoid dynamic compute on Height? We need to store height and only update when needed
+  *   1. Every node store height as variable, not def
+  *   1. When looping through the tree, we know for sure the height of input node, its either 0 or some n+1 where n is height of a flatmap
+  *      node that generates the input.
+  *   1. Then when registering a node during static creation, we
+  */
 
 class StateGraph(
     val nodesInHeight: mutable.ArrayBuffer[mutable.ArrayBuffer[InternalNode]],
@@ -48,7 +45,7 @@ class StateGraph(
   def update[A](input: InputInc[A], value: A): Unit = {
     val inode = icToNode(input).asInstanceOf[INode]
     if (inode.data != value) {
-      inode.recomputed = true
+      inode.changed = true
       inode.data = value
     }
   }
@@ -66,15 +63,19 @@ class StateGraph(
     }
 
     val internalNode: InternalNode = ic match {
-      case ic: InputInc[A] => INode(ic.init, forceRecompute, height = startingHeight)
+      case ic: InputInc[A] => INode(ic.init, true, height = startingHeight)
       case MapInc(i, f) =>
-        val dep = addInc(i, forceRecompute, startingHeight)
-        MNode(null, eval = f.asInstanceOf[Any => Any], dep)
+        val dep  = addInc(i, forceRecompute, startingHeight)
+        val next = MNode(null, eval = f.asInstanceOf[Any => Any], dep)
+        dep.pushOutNodes.addOne(next)
+        next
       case Map2Inc(i1, i2, f) =>
         val node1 = addInc(i1, forceRecompute, startingHeight)
-
         val node2 = addInc(i2, forceRecompute, startingHeight)
-        M2Node(null, f.asInstanceOf, (node1, node2))
+        val next  = M2Node(null, f.asInstanceOf, (node1, node2))
+        node1.pushOutNodes.addOne(next)
+        node2.pushOutNodes.addOne(next)
+        next
       case FMapInc(i, f) =>
         // a flatmap node is really a collection of nodes, with a start and an end, then the middle is created dynamically
         // we use the RedirectNode to represent
@@ -126,9 +127,9 @@ class StateGraph(
         } else {
           node match {
             case node: INode =>
-              if (node.recomputed) {
+              if (node.changed) {
                 changedNodes.put(node, true)
-                node.recomputed = false
+                node.changed = false
               }
             case node: MNode =>
               if (changedNodes.containsKey(node.dep)) {
@@ -138,14 +139,17 @@ class StateGraph(
                   changedNodes.put(node, true)
                 }
               }
-            case node @ FMNode(eval, dep, innerNode) =>
+            case node @ FMNode(eval, dep, forwardNode) =>
               if (changedNodes.containsKey(dep)) {
                 val newInnerTree = eval(dep.data)
-                val outputNode   = addInc(newInnerTree, true, node.height + 1)
+                /* todo: this is buggy, a node added might be an existing node, in which case no change required,
+                    it might also be a newly added node, depending on an existing, then the newly added node,
+                    for example a map depending on an existing Input need to have height of n + 1 where n is current height of FMap.*/
+                val outputNode = addInc(newInnerTree, true, node.height + 1)
 
-                innerNode.dep = outputNode
+                forwardNode.dep = outputNode
                 val innerNodeNewHeight = outputNode.height + 1
-                relocateInnerNode(innerNode, innerNodeNewHeight)
+                relocateInnerNode(forwardNode, innerNodeNewHeight)
               }
             case node @ M2Node(data, eval, (dep1, dep2)) =>
               if (changedNodes.containsKey(dep1) || changedNodes.containsKey(dep2)) {

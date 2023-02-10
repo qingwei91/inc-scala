@@ -1,10 +1,13 @@
 package io.incremental
 
+import scala.collection.mutable
+
 sealed trait InternalNode {
   def data: Any
   def height: Int
+  val pushOutNodes: mutable.ArrayBuffer[InternalNode] = new mutable.ArrayBuffer(10)
 }
-case class INode(var data: Any, var recomputed: Boolean = false, height: Int = 0) extends InternalNode
+case class INode(var data: Any, var changed: Boolean = false, height: Int = 0) extends InternalNode
 case class MNode(var data: Any, eval: Any => Any, dep: InternalNode) extends InternalNode {
   override def height: Int = dep.height + 1
 }

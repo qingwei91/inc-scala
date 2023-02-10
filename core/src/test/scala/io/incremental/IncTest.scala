@@ -25,10 +25,10 @@ class IncTest extends munit.FunSuite {
     val b = Inc.init(0.1)
     val c = Inc.init(-2.0)
 
-    val fourAc: Inc[Double] = a.toInc.map2(c)((a, c) => 4 * a * c)
-    val sqrtB: Inc[Double]  = b.toInc.map2(fourAc)((b, fac) => math.sqrt((b * b) - fac))
-    val plusSolution        = b.toInc.map2(sqrtB)((b, sqC) => -b + sqC).map2(a)((top, a) => top / (2 * a))
-    val minusSolution       = b.toInc.map2(sqrtB)((b, sqC) => -b - sqC).map2(a)((top, a) => top / (2 * a))
+    val fourAc: Inc[Double] = a.map2(c, (a, c) => 4 * a * c)
+    val sqrtB: Inc[Double]  = b.map2(fourAc, (b, fac) => math.sqrt((b * b) - fac))
+    val plusSolution        = b.map2(sqrtB, (b, sqC) => -b + sqC).map2(a, (top, a) => top / (2 * a))
+    val minusSolution       = b.map2(sqrtB, (b, sqC) => -b - sqC).map2(a, (top, a) => top / (2 * a))
 
     graph.addInc(plusSolution)
     graph.addInc(minusSolution)
@@ -73,5 +73,33 @@ class IncTest extends munit.FunSuite {
     graph.compute()
 
     assertEquals(handle.read, 352.8)
+  }
+
+  test("Use static node in dynamic node") {
+    val inputA = Inc.init(10)
+    val treeA  = inputA.map(a => a + 10)
+
+    val inputB = Inc.init(1)
+    val treeB = inputB
+      .map(q => q / 3)
+      .map(k => k * 3)
+      .flatMap { s =>
+        if (s > 10) {
+          treeA.map(oo => oo * s)
+        } else {
+          Inc.init(666)
+        }
+      }
+      .map2(treeA, (a, b) => a + b)
+
+    val graph = StateGraph.init
+    graph.addInc(treeB)
+    graph.update(inputB, 200)
+    graph.compute()
+    assertEquals(graph.observe(treeB).read, 20100)
+  }
+
+  test("No unnecessary recompute") {
+    ???
   }
 }
