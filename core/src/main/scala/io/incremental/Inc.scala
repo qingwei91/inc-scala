@@ -84,10 +84,18 @@ class StateGraph(
         val fmNode    = FMNode(f.asInstanceOf, depNode, innerNode)
         increaseToHeight(depNode.height + 1)
         nodesInHeight(depNode.height + 1).addOne(fmNode)
+
+        depNode.pushOutNodes.addOne(fmNode)
+        fmNode.pushOutNodes.addOne(innerNode)
+
         innerNode
     }
 
     icToNode.addOne(ic -> internalNode)
+    // make sure any newly added node's height is at least from startingHeight
+    // this is needed if we create a dynamic node in a flatmap that depends on a node with very low height but the flatmap
+    // is at a relative high height
+    internalNode.setHeight(startingHeight)
     increaseToHeight(internalNode.height + 1)
     nodesInHeight(internalNode.height).append(internalNode)
     internalNode
@@ -105,6 +113,9 @@ class StateGraph(
       nodesInHeight(innerNode.height).filterInPlace(_ ne innerNode)
       nodesInHeight(desiredHeight).append(innerNode)
       innerNode.height = desiredHeight
+      // we need to inform outward node about height change as soon as inner relocate
+      // so that we get a chance to relocate them
+      innerNode.pushOutNodes.foreach(_.setHeight(desiredHeight + 1))
     }
   }
 
@@ -124,6 +135,9 @@ class StateGraph(
           i -= 1
           increaseToHeight(correctHeight)
           nodesInHeight(correctHeight).append(node)
+          node.pushOutNodes.foreach { outward =>
+            outward.setHeight(correctHeight + 1)
+          }
         } else {
           node match {
             case node: INode =>
@@ -144,7 +158,8 @@ class StateGraph(
                 val newInnerTree = eval(dep.data)
                 /* todo: this is buggy, a node added might be an existing node, in which case no change required,
                     it might also be a newly added node, depending on an existing, then the newly added node,
-                    for example a map depending on an existing Input need to have height of n + 1 where n is current height of FMap.*/
+                    for example a map depending on an existing Input need to have height of n + 1
+                    where n is current height of FMap.*/
                 val outputNode = addInc(newInnerTree, true, node.height + 1)
 
                 forwardNode.dep = outputNode

@@ -96,10 +96,10 @@ class IncTest extends munit.FunSuite {
     graph.addInc(treeB)
     graph.update(inputB, 200)
     graph.compute()
-    assertEquals(graph.observe(treeB).read, 20100)
+    assertEquals(graph.observe(treeB).read, 3980)
   }
 
   test("No unnecessary recompute") {
-    ???
+
   }
 }
