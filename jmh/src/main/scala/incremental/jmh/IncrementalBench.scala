@@ -28,10 +28,10 @@ class IncrementalBench {
   @Param(Array("-10000"))
   var c: Double = 0
 
-//  @Benchmark
-//  def baseline() = {
-//    inlineExp(a, b, c)
-//  }
+  @Benchmark
+  def baseline() = {
+    inlineExp(a, b, c)
+  }
 
   @Benchmark
   def incrementalPureOverhead(state: MyState) = {
